@@ -39,20 +39,35 @@ You can contact Cyan Worlds, Inc. by email legal@cyan.com
       Mead, WA   99021
 
 *==LICENSE==*/
-/*****************************************************************************
-*
-*   $/Plasma20/Sources/Plasma/NucleusLib/pnNetProtocol/Pch.h
-*   
-***/
-
-#ifdef PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PCH_H
-#error "Header $/Plasma20/Sources/Plasma/NucleusLib/pnNetProtocol/Pch.h included more than once"
-#endif
-#define PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PCH_H
+#ifndef _plEGLDevice_h_
+#define _plEGLDevice_h_
 
 #include "HeadSpin.h"
-#include "pnNetBase/pnNetBase.h"
-#include "pnNetCli/pnNetCli.h"
-#include "pnUUID/pnUUID.h"
+#include "plGLDevice.h"
 
-#include "Private/pnNpAllIncludes.h"
+#ifdef USE_EGL
+#include <epoxy/egl.h>
+
+#include "plPipeline/hsG3DDeviceSelector.h"
+
+class plEGLDevice : public plGLDeviceImpl
+{
+protected:
+    EGLDisplay fDisplay;
+    EGLContext fContext;
+    EGLSurface fSurface;
+
+    plEGLDevice(hsWindowHndl window, hsWindowHndl device, EGLDisplay display, EGLContext context, EGLSurface surface);
+
+public:
+    static bool Enumerate(hsG3DDeviceRecord& record);
+    static plEGLDevice* TryInit(hsWindowHndl window, hsWindowHndl device, ST::string& error);
+
+    void Shutdown() override;
+    bool BeginRender(ST::string& error) override;
+    bool EndRender(ST::string& error) override;
+};
+
+#endif // USE_EGL
+
+#endif // _plEGLDevice_h_

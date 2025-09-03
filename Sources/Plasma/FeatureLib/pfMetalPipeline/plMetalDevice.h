@@ -65,8 +65,16 @@ class plCubicEnvironmap;
 class plLayerInterface;
 class plMetalPipelineState;
 
-// NOTE: Results of this will be row major
-matrix_float4x4* hsMatrix2SIMD(const hsMatrix44& src, matrix_float4x4* dst);
+inline const matrix_float4x4 hsMatrix2SIMD(const hsMatrix44& src)
+{
+    constexpr auto matrixSize = sizeof(matrix_float4x4);
+    if (src.fFlags & hsMatrix44::kIsIdent) {
+        return matrix_identity_float4x4;
+    }
+    simd_float4x4 dst;
+    memcpy(&dst, &src.fMap, matrixSize);
+    return dst;
+}
 
 class plMetalDevice
 {
@@ -136,10 +144,10 @@ public:
     void CheckIndexBuffer(IndexBufferRef* iRef);
     void FillIndexBufferRef(IndexBufferRef* iRef, plGBufferGroup* owner, uint32_t idx);
 
-    void SetupTextureRef(plBitmap* img, TextureRef* tRef);
+    void SetupTextureRef(plLayerInterface* layer, plBitmap* img, TextureRef* tRef);
     void CheckTexture(TextureRef* tRef);
-    void MakeTextureRef(TextureRef* tRef, plMipmap* img);
-    void MakeCubicTextureRef(TextureRef* tRef, plCubicEnvironmap* img);
+    void MakeTextureRef(TextureRef* tRef, plLayerInterface* layer, plMipmap* img);
+    void MakeCubicTextureRef(TextureRef* tRef, plLayerInterface* layer, plCubicEnvironmap* img);
 
     ST::string GetErrorString() const { return fErrorMsg; }
 
@@ -225,6 +233,7 @@ private:
     
     void SetOutputLayer(CA::MetalLayer* layer) { fLayer = layer; }
     CA::MetalLayer* GetOutputLayer() const { return fLayer; };
+    hsDisplayHndl fDisplay;
 
 protected:
     plMetalLinkedPipeline* PipelineState(plMetalPipelineState* pipelineState);

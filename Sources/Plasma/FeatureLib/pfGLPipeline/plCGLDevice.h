@@ -39,44 +39,34 @@ You can contact Cyan Worlds, Inc. by email legal@cyan.com
       Mead, WA   99021
 
 *==LICENSE==*/
-/*****************************************************************************
-*
-*   $/Plasma20/Sources/Plasma/NucleusLib/pnNetProtocol/Private/pnNpAllIncludes.h
-*   
-***/
+#ifndef _plCGLDevice_h_
+#define _plCGLDevice_h_
 
-#ifdef PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PRIVATE_PNNPALLINCLUDES_H
-#error "Header $/Plasma20/Sources/Plasma/NucleusLib/pnNetProtocol/Private/pnNpAllIncludes.h included more than once"
-#endif
-#define PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PRIVATE_PNNPALLINCLUDES_H
+#include "HeadSpin.h"
 
-#if defined(USES_PROTOCOL_CLI2AUTH) || defined(USES_PROTOCOL_CLI2GAME) || defined(USES_PROTOCOL_CLI2CSR) || defined(USES_PROTOCOL_CLI2GATEKEEPER)
-# define USES_NETCLI
-#endif
+#ifdef HS_BUILD_FOR_MACOS
+#include "plGLDevice.h"
+#include "plPipeline/hsG3DDeviceSelector.h"
+#include <OpenGL/OpenGL.h>
 
-#if defined(USES_PROTOCOL_SRV2VAULT) || defined(USES_PROTOCOL_SRV2DB) || defined(USES_PROTOCOL_SRV2MCP) || defined(USES_PROTOCOL_SRV2STATE) || defined(USES_PROTOCOL_SRV2LOG) || defined(USES_PROTOCOL_SRV2SCORE)
-# define USES_NETSRV
-#endif
+class plCGLDevice : public plGLDeviceImpl
+{
+protected:
+    CGLContextObj fContext;
 
-#include "pnNpCommon.h"
+    plCGLDevice(hsWindowHndl window, hsWindowHndl device, CGLContextObj context);
+
+public:
+    static bool Enumerate(hsG3DDeviceRecord& record);
+    static plCGLDevice* TryInit(hsWindowHndl window, hsWindowHndl device, ST::string& error);
+
+    void Shutdown() override;
+    bool BeginRender(ST::string& error) override;
+    bool EndRender(ST::string& error) override;
+};
+
+#endif // HS_BUILD_FOR_MACOS
+
+#endif // _plCGLDevice_h_
 
 
-
-#ifdef USES_PROTOCOL_CLI2FILE
-# include "Protocols/Cli2File/pnNpCli2File.h"
-#endif
-
-
-#ifdef USES_NETCLI
-# ifdef USES_PROTOCOL_CLI2AUTH
-#  include "Protocols/Cli2Auth/pnNpCli2Auth.h"
-# endif
-
-# ifdef USES_PROTOCOL_CLI2GAME
-#  include "Protocols/Cli2Game/pnNpCli2Game.h"
-# endif
-
-# ifdef USES_PROTOCOL_CLI2GATEKEEPER
-#  include "Protocols/Cli2GateKeeper/pnNpCli2GateKeeper.h"
-# endif
-#endif // def USES_NETCLI

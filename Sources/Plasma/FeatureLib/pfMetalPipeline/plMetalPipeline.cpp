@@ -86,64 +86,50 @@ You can contact Cyan Worlds, Inc. by email legal@cyan.com
 
 uint32_t fDbgSetupInitFlags; // HACK temp only
 
-plProfile_CreateCounter("Feed Triangles", "Draw", DrawFeedTriangles);
-plProfile_CreateCounter("Draw Prim Static", "Draw", DrawPrimStatic);
-plProfile_CreateMemCounter("Total Texture Size", "Draw", TotalTexSize);
-plProfile_CreateCounter("Layer Change", "Draw", LayChange);
+plProfile_Extern(DrawFeedTriangles);
+plProfile_Extern(DrawPrimStatic);
+plProfile_Extern(TotalTexSize);
+plProfile_Extern(LayChange);
 plProfile_Extern(DrawTriangles);
 plProfile_Extern(MatChange);
+plProfile_Extern(NumSkin);
 
-plProfile_CreateTimer("PrepShadows", "PipeT", PrepShadows);
-plProfile_CreateTimer("PrepDrawable", "PipeT", PrepDrawable);
-plProfile_CreateTimer("  Skin", "PipeT", Skin);
-plProfile_CreateTimer("RenderSpan", "PipeT", RenderSpan);
-plProfile_CreateTimer("  MergeCheck", "PipeT", MergeCheck);
-plProfile_CreateTimer("  MergeSpan", "PipeT", MergeSpan);
-plProfile_CreateTimer("  SpanTransforms", "PipeT", SpanTransforms);
-plProfile_CreateTimer("  SpanFog", "PipeT", SpanFog);
-plProfile_CreateTimer("  SelectLights", "PipeT", SelectLights);
-plProfile_CreateTimer("  SelectProj", "PipeT", SelectProj);
-plProfile_CreateTimer("  CheckDyn", "PipeT", CheckDyn);
-plProfile_CreateTimer("  CheckStat", "PipeT", CheckStat);
-plProfile_CreateTimer("  RenderBuff", "PipeT", RenderBuff);
-plProfile_CreateTimer("  RenderPrim", "PipeT", RenderPrim);
-plProfile_CreateTimer("PlateMgr", "PipeT", PlateMgr);
-plProfile_CreateTimer("DebugText", "PipeT", DebugText);
-plProfile_CreateTimer("Reset", "PipeT", Reset);
-
-plProfile_CreateCounterNoReset("Reload", "PipeC", PipeReload);
-plProfile_CreateCounter("AvRTPoolUsed", "PipeC", AvRTPoolUsed);
-plProfile_CreateCounter("AvRTPoolCount", "PipeC", AvRTPoolCount);
-plProfile_CreateCounter("AvRTPoolRes", "PipeC", AvRTPoolRes);
-plProfile_CreateCounter("AvRTShrinkTime", "PipeC", AvRTShrinkTime);
-plProfile_CreateCounter("NumSkin", "PipeC", NumSkin);
+plProfile_Extern(PipeReload);
+plProfile_Extern(PrepShadows);
+plProfile_Extern(PrepDrawable);
+plProfile_Extern(Skin);
+plProfile_Extern(RenderSpan);
+plProfile_Extern(MergeCheck);
+plProfile_Extern(MergeSpan);
+plProfile_Extern(SpanTransforms);
+plProfile_Extern(SpanFog);
+plProfile_Extern(SelectLights);
+plProfile_Extern(SelectProj);
+plProfile_Extern(CheckDyn);
+plProfile_Extern(CheckStat);
+plProfile_Extern(RenderBuff);
+plProfile_Extern(RenderPrim);
+plProfile_Extern(PlateMgr);
+plProfile_Extern(DebugText);
+plProfile_Extern(Reset);
+plProfile_Extern(AvRTPoolUsed);
+plProfile_Extern(AvRTPoolCount);
+plProfile_Extern(AvRTPoolRes);
+plProfile_Extern(AvRTShrinkTime);
 
 plMetalEnumerate plMetalPipeline::enumerator;
 
-class plRenderTriListFunc : public plRenderPrimFunc
+class plMetalRenderTriListFunc : public plRenderTriListFunc<plMetalDevice>
 {
-protected:
-    plMetalDevice* fDevice;
-    int            fBaseVertexIndex;
-    int            fVStart;
-    int            fVLength;
-    int            fIStart;
-    int            fNumTris;
-
 public:
-    plRenderTriListFunc(plMetalDevice* device, int baseVertexIndex,
+    plMetalRenderTriListFunc(plMetalDevice* device, int baseVertexIndex,
                         int vStart, int vLength, int iStart, int iNumTris)
-        : fDevice(device),
-          fBaseVertexIndex(baseVertexIndex),
-          fVStart(vStart),
-          fVLength(vLength),
-          fIStart(iStart),
-          fNumTris(iNumTris) {}
+        : plRenderTriListFunc(device, baseVertexIndex, vStart, vLength, iStart, iNumTris) {}
 
     bool RenderPrims() const override;
 };
 
-bool plRenderTriListFunc::RenderPrims() const
+bool plMetalRenderTriListFunc::RenderPrims() const
 {
     plProfile_IncCount(DrawFeedTriangles, fNumTris);
     plProfile_IncCount(DrawTriangles, fNumTris);
@@ -159,7 +145,7 @@ bool plRenderTriListFunc::RenderPrims() const
     fDevice->CurrentRenderCommandEncoder()->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, fNumTris * 3, MTL::IndexTypeUInt16, fDevice->fCurrentIndexBuffer, (sizeof(uint16_t) * fIStart));
 }
 
-plMetalPipeline::plMetalPipeline(hsWindowHndl display, hsWindowHndl window, const hsG3DDeviceModeRecord* devMode) : pl3DPipeline(devMode),
+plMetalPipeline::plMetalPipeline(hsDisplayHndl display, hsWindowHndl window, const hsG3DDeviceModeRecord* devMode) : pl3DPipeline(devMode),
                                                                                                                     fRenderTargetRefList(),
                                                                                                                     fMatRefList(),
                                                                                                                     fCurrentRenderPassUniforms(),
@@ -178,14 +164,25 @@ plMetalPipeline::plMetalPipeline(hsWindowHndl display, hsWindowHndl window, cons
     fCurrLayerIdx = 0;
     fDevice.fPipeline = this;
 
+    // devMode doesn't actually store a reference to the Metal device
+    // We have the display id - go grab the Metal device from the
+    // display id.
+
+    fDevice.fMetalDevice = plMetalEnumerate::DeviceForDisplay(display);
+    fDevice.InitDevice();
+
     fMaxLayersAtOnce = devMode->GetDevice()->GetLayersAtOnce();
     
     fIsFullscreen = !fInitialPipeParams.Windowed;
+    
+    fDesktopParams = plDisplayHelper::GetInstance()->DesktopDisplayMode();
     
     fDevice.SetOutputLayer(reinterpret_cast<CA::MetalLayer*>(window));
     // For now - set this once at startup. If the underlying device is allow to change on
     // the fly (eGPU, display change, etc) - revisit.
     fDevice.GetOutputLayer()->setDevice(fDevice.fMetalDevice);
+    fDevice.GetOutputLayer()->setDrawableSize(CGSizeMake(devMode->GetMode()->GetWidth(), devMode->GetMode()->GetHeight()));
+    fDevice.fDisplay = display;
 
     // Default our output format to 8 bit BGRA. Client may immediately change this to
     // the actual framebuffer format.
@@ -743,6 +740,7 @@ void plMetalPipeline::Resize(uint32_t width, uint32_t height)
         fOrigHeight = height;
         IGetViewTransform().SetScreenSize((uint16_t)(fOrigWidth), (uint16_t)(fOrigHeight));
         resetTransform.SetScreenSize((uint16_t)(fOrigWidth), (uint16_t)(fOrigHeight));
+        fDevice.GetOutputLayer()->setDrawableSize(CGSizeMake(width, height));
     } else {
         // Just for debug
         hsStatusMessage("Recreating the pipeline...\n");
@@ -970,35 +968,7 @@ plMipmap* plMetalPipeline::ExtractMipMap(plRenderTarget* targ)
 
 void plMetalPipeline::GetSupportedDisplayModes(std::vector<plDisplayMode>* res, int ColorDepth)
 {
-    /*
-     There are decisions to make here.
-
-     Modern macOS does not support "display modes." You panel runs at native resolution at all times, 
-     and you can over-render or under-render. But you never set the display mode of the panel, or get
-     the display mode of the panel. Most games have a "scale slider."
-
-     Note: There are legacy APIs for display modes for compatibility with older software. In since 
-     we're here writing a new renderer, lets do things the right way. The display mode APIs also have
-     trouble with density. I.E. a 4k display might be reported as a 2k display if the window manager is
-     running in a higher DPI mode.
-
-     The basic approach should be to render at whatever the resolution of our output surface is. We're 
-     mostly doing that now (aspect ratio doesn't adjust.)
-
-     Ideally we should support some sort of scaling/semi dynamic renderbuffer resolution thing. But don't 
-     mess with the window servers framebuffer size. macOS has accelerated resolution scaling like consoles
-     do. Use that.
-     */
-
-    std::vector<plDisplayMode> supported;
-    CA::MetalLayer* layer = fDevice.GetOutputLayer();
-    CGSize drawableSize = layer->drawableSize();
-    supported.emplace_back();
-    supported[0].Width = drawableSize.width;
-    supported[0].Height = drawableSize.height;
-    supported[0].ColorDepth = 32;
-
-    *res = supported;
+    *res = plDisplayHelper::GetInstance()->GetSupportedDisplayModes(fDevice.fDisplay);
 }
 
 int plMetalPipeline::GetMaxAnisotropicSamples()
@@ -1147,8 +1117,7 @@ void plMetalPipeline::ISetupTransforms(plDrawableSpans* drawable, const plSpan& 
     }
 
     if (span.fNumMatrices == 2) {
-        matrix_float4x4 mat;
-        hsMatrix2SIMD(drawable->GetPaletteMatrix(span.fBaseMatrix + 1), &mat);
+        const matrix_float4x4 mat = hsMatrix2SIMD(drawable->GetPaletteMatrix(span.fBaseMatrix + 1));
         fDevice.CurrentRenderCommandEncoder()->setVertexBytes(&mat, sizeof(matrix_float4x4), VertexShaderArgumentBlendMatrix1);
     }
 
@@ -1183,7 +1152,7 @@ void plMetalPipeline::IRenderBufferSpan(const plIcicle& span, hsGDeviceRef* vb,
 
     /* Index Buffer stuff and drawing */
 
-    plRenderTriListFunc render(&fDevice, 0, vStart, vLength, iStart, iLength / 3);
+    plMetalRenderTriListFunc render(&fDevice, 0, vStart, vLength, iStart, iLength / 3);
 
     plProfile_EndTiming(RenderBuff);
 
@@ -1315,8 +1284,7 @@ void plMetalPipeline::IRenderProjection(const plRenderPrimFunc& render, plLightI
     fCurrentRenderPassUniforms->fogColor = {0.f, 0.f, 0.f};
     fCurrentRenderPassUniforms->diffuseCol = {1.f, 1.f, 1.f, 1.f};
 
-    matrix_float4x4 tXfm;
-    hsMatrix2SIMD(proj->GetTransform(), &tXfm);
+    const matrix_float4x4& tXfm = hsMatrix2SIMD(proj->GetTransform());
     fCurrentRenderPassUniforms->uvTransforms[0].transform = tXfm;
     fCurrentRenderPassUniforms->uvTransforms[0].UVWSrc = proj->GetUVWSrc();
 
@@ -1478,7 +1446,7 @@ void plMetalPipeline::IRenderAuxSpan(const plSpan& span, const plAuxSpan* aux)
     fState.fCurrentVertexBuffer = vRef->GetBuffer();
     fDevice.fCurrentIndexBuffer = iRef->GetBuffer();
 
-    plRenderTriListFunc render(&fDevice, 0, aux->fVStartIdx, aux->fVLength, aux->fIStartIdx, aux->fILength / 3);
+    plMetalRenderTriListFunc render(&fDevice, 0, aux->fVStartIdx, aux->fVLength, aux->fIStartIdx, aux->fILength / 3);
 
     for (int32_t pass = 0; pass < mRef->GetNumPasses(); pass++) {
         IHandleMaterialPass(material, pass, &span, vRef);
@@ -2537,87 +2505,6 @@ void plMetalPipeline::PopCurrentLightSources()
 
 // Special effects /////////////////////////////////////////////////////////////
 
-// IPushOverBaseLayer /////////////////////////////////////////////////////////
-// Sets fOverBaseLayer (if any) as a wrapper on top of input layer.
-// This allows the OverBaseLayer to intercept and modify queries of
-// the real current layer's properties (e.g. color or state).
-// fOverBaseLayer is set to only get applied to the base layer during
-// multitexturing.
-// Must be matched with call to IPopOverBaseLayer.
-plLayerInterface* plMetalPipeline::IPushOverBaseLayer(plLayerInterface* li)
-{
-    if (!li)
-        return nullptr;
-
-    fOverLayerStack.emplace_back(li);
-
-    if (!fOverBaseLayer)
-        return fOverBaseLayer = li;
-
-    fForceMatHandle = true;
-    fOverBaseLayer = fOverBaseLayer->Attach(li);
-    fOverBaseLayer->Eval(fTime, fFrame, 0);
-    return fOverBaseLayer;
-}
-
-// IPopOverBaseLayer /////////////////////////////////////////////////////////
-// Removes fOverBaseLayer as wrapper on top of input layer.
-// Should match calls to IPushOverBaseLayer.
-plLayerInterface* plMetalPipeline::IPopOverBaseLayer(plLayerInterface* li)
-{
-    if (!li)
-        return nullptr;
-
-    fForceMatHandle = true;
-
-    plLayerInterface* pop = fOverLayerStack.back();
-    fOverLayerStack.pop_back();
-    fOverBaseLayer = fOverBaseLayer->Detach(pop);
-
-    return pop;
-}
-
-// IPushOverAllLayer ///////////////////////////////////////////////////
-// Push fOverAllLayer (if any) as wrapper around the input layer.
-// fOverAllLayer is set to be applied to each layer during multitexturing.
-// Must be matched by call to IPopOverAllLayer
-plLayerInterface* plMetalPipeline::IPushOverAllLayer(plLayerInterface* li)
-{
-    if (!li)
-        return nullptr;
-
-    fOverLayerStack.push_back(li);
-
-    if (!fOverAllLayer) {
-        fOverAllLayer = li;
-        fOverAllLayer->Eval(fTime, fFrame, 0);
-        return fOverAllLayer;
-    }
-
-    fForceMatHandle = true;
-    fOverAllLayer = fOverAllLayer->Attach(li);
-    fOverAllLayer->Eval(fTime, fFrame, 0);
-
-    return fOverAllLayer;
-}
-
-// IPopOverAllLayer //////////////////////////////////////////////////
-// Remove fOverAllLayer as wrapper on top of input layer.
-// Should match calls to IPushOverAllLayer.
-plLayerInterface* plMetalPipeline::IPopOverAllLayer(plLayerInterface* li)
-{
-    if (!li)
-        return nullptr;
-
-    fForceMatHandle = true;
-
-    plLayerInterface* pop = fOverLayerStack.back();
-    fOverLayerStack.pop_back();
-    fOverAllLayer = fOverAllLayer->Detach(pop);
-
-    return pop;
-}
-
 // IPushProjPiggyBack //////////////////////////////////////////////////
 // Push a projected texture on as a piggy back.
 void plMetalPipeline::IPushProjPiggyBack(plLayerInterface* li)
@@ -2904,18 +2791,6 @@ void plMetalPipeline::FindFragFunction()
     plMetalPipeline* pipe = new plMetalPipeline(disp, hWnd, devMode);
     return pipe;
 }*/
-
-// IClearShadowSlaves ///////////////////////////////////////////////////////////////////////////
-// At EndRender(), we need to clear our list of shadow slaves. They are only valid for one frame.
-void plMetalPipeline::IClearShadowSlaves()
-{
-    int i;
-    for (i = 0; i < fShadows.size(); i++) {
-        const plShadowCaster* caster = fShadows[i]->fCaster;
-        caster->GetKey()->UnRefObject();
-    }
-    fShadows.clear();
-}
 
 // Create all our video memory consuming D3D objects.
 bool plMetalPipeline::ICreateDynDeviceObjects()
@@ -3234,10 +3109,7 @@ bool plMetalPipeline::IPushShadowCastState(plShadowSlave* slave)
         castLUT = castLUT * c2w;
     }
 
-    simd_float4x4 tXfm;
-    hsMatrix2SIMD(castLUT, &tXfm);
-
-    fCurrentRenderPassUniforms->uvTransforms[0].transform = tXfm;
+    fCurrentRenderPassUniforms->uvTransforms[0].transform = hsMatrix2SIMD(castLUT);
     fCurrentRenderPassUniforms->uvTransforms[0].UVWSrc = plLayerInterface::kUVWPosition;
 
     /*DWORD clearColor = 0xff000000L;
@@ -3715,7 +3587,7 @@ void plMetalPipeline::IRenderShadowCasterSpan(plShadowSlave* slave, plDrawableSp
     uint32_t iStart = span.fIPackedIdx;
     uint32_t iLength = span.fILength;
 
-    plRenderTriListFunc render(&fDevice, 0, vStart, vLength, iStart, iLength / 3);
+    plMetalRenderTriListFunc render(&fDevice, 0, vStart, vLength, iStart, iLength / 3);
 
     static hsMatrix44 emptyMatrix;
     hsMatrix44        m = emptyMatrix;
@@ -3874,9 +3746,7 @@ void plMetalPipeline::ISetupShadowRcvTextureStages(hsGMaterial* mat)
         // Normal UVW source.
         fCurrentRenderPassUniforms->uvTransforms[2].UVWSrc = uvwSrc;
         // MiscFlags to layer's misc flags
-        matrix_float4x4 tXfm;
-        hsMatrix2SIMD(layer->GetTransform(), &tXfm);
-        fCurrentRenderPassUniforms->uvTransforms[2].transform = tXfm;
+        fCurrentRenderPassUniforms->uvTransforms[2].transform = hsMatrix2SIMD(layer->GetTransform());
     }
 
     fDevice.CurrentRenderCommandEncoder()->setFragmentBytes(&layerIndex, sizeof(int), FragmentShaderArgumentShadowCastAlphaSrc);
@@ -3924,32 +3794,16 @@ void plMetalPipeline::ISetupShadowSlaveTextures(plShadowSlave* slave)
     fDevice.CurrentRenderCommandEncoder()->setFragmentBytes(&uniforms, sizeof(plMetalShadowCastFragmentShaderArgumentBuffer), FragmentShaderArgumentShadowCastUniforms);
 
     hsMatrix44    cameraToTexture = slave->fWorldToTexture * c2w;
-    simd_float4x4 tXfm;
-    hsMatrix2SIMD(cameraToTexture, &tXfm);
 
     fCurrentRenderPassUniforms->uvTransforms[0].UVWSrc = plLayerInterface::kUVWPosition;
-    fCurrentRenderPassUniforms->uvTransforms[0].transform = tXfm;
+    fCurrentRenderPassUniforms->uvTransforms[0].transform = hsMatrix2SIMD(cameraToTexture);
 
     // Stage 1: the lut
     // Set the texture transform to slave's fRcvLUT
     hsMatrix44 cameraToLut = slave->fRcvLUT * c2w;
-    hsMatrix2SIMD(cameraToLut, &tXfm);
 
     fCurrentRenderPassUniforms->uvTransforms[1].UVWSrc = plLayerInterface::kUVWPosition;
-    fCurrentRenderPassUniforms->uvTransforms[1].transform = tXfm;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-//// View Stuff ///////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-
-//// IIsViewLeftHanded ////////////////////////////////////////////////////////
-//  Returns true if the combination of the local2world and world2camera
-//  matrices is left-handed.
-
-bool plMetalPipeline::IIsViewLeftHanded()
-{
-    return fView.GetViewTransform().GetOrthogonal() ^ (fView.fLocalToWorldLeftHanded ^ fView.fWorldToCamLeftHanded) ? true : false;
+    fCurrentRenderPassUniforms->uvTransforms[1].transform = hsMatrix2SIMD(cameraToLut);
 }
 
 //// ISetCullMode /////////////////////////////////////////////////////////////
@@ -3958,7 +3812,7 @@ bool plMetalPipeline::IIsViewLeftHanded()
 // transforms.
 void plMetalPipeline::ISetCullMode(bool flip)
 {
-    MTL::CullMode newCullMode = !IIsViewLeftHanded() ^ !flip ? MTL::CullModeFront : MTL::CullModeBack;
+    MTL::CullMode newCullMode = !fView.IsViewLeftHanded() ^ !flip ? MTL::CullModeFront : MTL::CullModeBack;
     if (fState.fCurrentCullMode != newCullMode) {
         fDevice.CurrentRenderCommandEncoder()->setCullMode(newCullMode);
         fState.fCurrentCullMode = newCullMode;
@@ -4141,10 +3995,10 @@ void plMetalPipeline::IBlendVertBuffer(plSpan* span, hsMatrix44* matrixPalette, 
                                        uint8_t* dest, uint32_t destStride, uint32_t count,
                                        uint16_t localUVWChans)
 {
-    float      pt_buf[] = {0.f, 0.f, 0.f, 1.f};
-    float      vec_buf[] = {0.f, 0.f, 0.f, 0.f};
-    hsPoint3*  pt = reinterpret_cast<hsPoint3*>(pt_buf);
-    hsVector3* vec = reinterpret_cast<hsVector3*>(vec_buf);
+    simd_float4      pt_buf = {0.f, 0.f, 0.f, 1.f};
+    simd_float4      vec_buf = {0.f, 0.f, 0.f, 0.f};
+    hsPoint3*  pt = reinterpret_cast<hsPoint3*>(&pt_buf);
+    hsVector3* vec = reinterpret_cast<hsVector3*>(&vec_buf);
 
     uint32_t indices;
     float    weights[4];
@@ -4175,15 +4029,14 @@ void plMetalPipeline::IBlendVertBuffer(plSpan* span, hsMatrix44* matrixPalette, 
         simd_float4 destNorm_buf = (simd_float4){0.f, 0.f, 0.f, 0.f};
         simd_float4 destPt_buf = (simd_float4){0.f, 0.f, 0.f, 1.f};
 
-        simd_float4x4 simdMatrix;
-
         // Blend
         for (uint32_t j = 0; j < numWeights + 1; ++j) {
-            hsMatrix2SIMD(matrixPalette[indices & 0xFF], &simdMatrix);
-            if (weights[j]) {
+            float weight = weights[j];
+            if (weight) {
+                const simd_float4x4& simdMatrix = hsMatrix2SIMD(matrixPalette[indices & 0xFF]);
                 // Note: This bit is different than GL/DirectX. It's using acclerate so this is also accelerated on ARM through NEON or maybe even the Neural Engine.
-                destPt_buf += simd_mul(*(simd_float4*)pt_buf, simdMatrix) * weights[j];
-                destNorm_buf += simd_mul(*(simd_float4*)vec_buf, simdMatrix) * weights[j];
+                destPt_buf += simd_mul(pt_buf, simdMatrix) * weight;
+                destNorm_buf += simd_mul(vec_buf, simdMatrix) * weight;
             }
             // ISkinVertexSSE41(matrixPalette[indices & 0xFF], weights[j], pt_buf, destPt_buf, vec_buf, destNorm_buf);
             indices >>= 8;
@@ -4202,157 +4055,19 @@ void plMetalPipeline::IBlendVertBuffer(plSpan* span, hsMatrix44* matrixPalette, 
     }
 }
 
-// Resource checking
-
-// CheckTextureRef //////////////////////////////////////////////////////
-// Make sure the given layer's texture has background D3D resources allocated.
-void plMetalPipeline::CheckTextureRef(plLayerInterface* layer)
-{
-    plBitmap* bitmap = layer->GetTexture();
-
-    if (bitmap) {
-        CheckTextureRef(bitmap);
-    }
-}
-
-void plMetalPipeline::CheckTextureRef(plBitmap* bitmap)
-{
-    plMetalTextureRef* tRef = static_cast<plMetalTextureRef*>(bitmap->GetDeviceRef());
-
-    if (!tRef) {
-        tRef = static_cast<plMetalTextureRef*>(MakeTextureRef(bitmap));
-    }
-
-    // If it's dirty, refill it.
-    if (tRef->IsDirty()) {
-        IReloadTexture(bitmap, tRef);
-    }
-}
-
-hsGDeviceRef* plMetalPipeline::MakeTextureRef(plBitmap* bitmap)
-{
-    plMetalTextureRef* tRef = static_cast<plMetalTextureRef*>(bitmap->GetDeviceRef());
-
-    if (!tRef) {
-        tRef = new plMetalTextureRef();
-
-        fDevice.SetupTextureRef(bitmap, tRef);
-    }
-
-    if (!tRef->IsLinked()) {
-        tRef->Link(&fTextureRefList);
-    }
-
-    // Make sure it has all resources created.
-    fDevice.CheckTexture(tRef);
-
-    // If it's dirty, refill it.
-    if (tRef->IsDirty()) {
-        IReloadTexture(bitmap, tRef);
-    }
-    return tRef;
-}
-
 void plMetalPipeline::IReloadTexture(plBitmap* bitmap, plMetalTextureRef* ref)
 {
     plMipmap* mip = plMipmap::ConvertNoRef(bitmap);
     if (mip) {
-        fDevice.MakeTextureRef(ref, mip);
+        fDevice.MakeTextureRef(ref, nullptr, mip);
         return;
     }
 
     plCubicEnvironmap* cubic = plCubicEnvironmap::ConvertNoRef(bitmap);
     if (cubic) {
-        fDevice.MakeCubicTextureRef(ref, cubic);
+        fDevice.MakeCubicTextureRef(ref, nullptr, cubic);
         return;
     }
-}
-
-// CheckVertexBufferRef /////////////////////////////////////////////////////
-// Make sure the buffer group has a valid buffer ref and that it is up to date.
-void plMetalPipeline::CheckVertexBufferRef(plGBufferGroup* owner, uint32_t idx)
-{
-    // First, do we have a device ref at this index?
-    plMetalVertexBufferRef* vRef = static_cast<plMetalVertexBufferRef*>(owner->GetVertexBufferRef(idx));
-
-    // If not
-    if (!vRef) {
-        // Make the blank ref
-        vRef = new plMetalVertexBufferRef();
-
-        fDevice.SetupVertexBufferRef(owner, idx, vRef);
-    }
-
-    if (!vRef->IsLinked()) {
-        vRef->Link(&fVtxBuffRefList);
-    }
-
-    // One way or another, we now have a vbufferref[idx] in owner.
-    // Now, does it need to be (re)filled?
-    // If the owner is volatile, then we hold off. It might not
-    // be visible, and we might need to refill it again if we
-    // have an overrun of our dynamic buffer.
-    if (!vRef->Volatile()) {
-        // If it's a static buffer, allocate a vertex buffer for it.
-        fDevice.CheckStaticVertexBuffer(vRef, owner, idx);
-
-        // Might want to remove this assert, and replace it with a dirty check
-        // if we have static buffers that change very seldom rather than never.
-        hsAssert(!vRef->IsDirty(), "Non-volatile vertex buffers should never get dirty");
-    } else {
-        // Make sure we're going to be ready to fill it.
-        if (!vRef->fData && (vRef->fFormat != owner->GetVertexFormat())) {
-            vRef->fData = new uint8_t[vRef->fCount * vRef->fVertexSize];
-            fDevice.FillVolatileVertexBufferRef(vRef, owner, idx);
-        }
-    }
-}
-
-// CheckIndexBufferRef /////////////////////////////////////////////////////
-// Make sure the buffer group has an index buffer ref and that its data is current.
-void plMetalPipeline::CheckIndexBufferRef(plGBufferGroup* owner, uint32_t idx)
-{
-    plMetalIndexBufferRef* iRef = static_cast<plMetalIndexBufferRef*>(owner->GetIndexBufferRef(idx));
-
-    if (!iRef) {
-        // Create one from scratch.
-        iRef = new plMetalIndexBufferRef();
-
-        fDevice.SetupIndexBufferRef(owner, idx, iRef);
-    }
-
-    if (!iRef->IsLinked()) {
-        iRef->Link(&fIdxBuffRefList);
-    }
-
-    // Make sure it has all resources created.
-    fDevice.CheckIndexBuffer(iRef);
-
-    // If it's dirty, refill it.
-    if (iRef->IsDirty()) {
-        fDevice.FillIndexBufferRef(iRef, owner, idx);
-    }
-}
-
-//// IGetBufferFormatSize /////////////////////////////////////////////////////
-// Calculate the vertex stride from the given format.
-uint32_t plMetalPipeline::IGetBufferFormatSize(uint8_t format) const
-{
-    uint32_t size = sizeof(float) * 6 + sizeof(uint32_t) * 2; // Position and normal, and two packed colors
-
-    switch (format & plGBufferGroup::kSkinWeightMask) {
-        case plGBufferGroup::kSkinNoWeights:
-            break;
-        case plGBufferGroup::kSkin1Weight:
-            size += sizeof(float);
-            break;
-        default:
-            hsAssert(false, "Invalid skin weight value in IGetBufferFormatSize()");
-    }
-
-    size += sizeof(float) * 3 * plGBufferGroup::CalcNumUVs(format);
-
-    return size;
 }
 
 void plMetalPipeline::plMetalPipelineCurrentState::Reset()

@@ -39,17 +39,11 @@ You can contact Cyan Worlds, Inc. by email legal@cyan.com
       Mead, WA   99021
 
 *==LICENSE==*/
-/*****************************************************************************
-*
-*   $/Plasma20/Sources/Plasma/NucleusLib/pnNetProtocol/Private/Protocols/pnNpCli2Auth.h
-*   
-***/
 
-#ifdef PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PRIVATE_PROTOCOLS_PNNPCLI2AUTH_H
-#error "Header $/Plasma20/Sources/Plasma/NucleusLib/pnNetProtocol/Private/Protocols/pnNpCli2Auth.h included more than once"
-#endif
-#define PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PRIVATE_PROTOCOLS_PNNPCLI2AUTH_H
+#ifndef PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PNNPCLI2AUTH_H
+#define PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PNNPCLI2AUTH_H
 
+#include "pnNpCommon.h"
 
 // kNetProtocolCli2Auth messages (must be <= (uint16_t)-1)
 enum {
@@ -393,7 +387,7 @@ struct Cli2Auth_FileListRequest {
     uint32_t       messageId;
     uint32_t       transId;
     char16_t       directory[kNetDefaultStringSize];
-    char16_t       ext[MAX_EXT];
+    char16_t       ext[kMaxFileExtensionLength];
 };
 
 // FileDownloadRequest
@@ -1085,3 +1079,5 @@ struct Auth2Cli_ServerCaps {
 // END PACKED DATA STRUCTURES
 //============================================================================
 #pragma pack(pop)
+
+#endif // PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PNNPCLI2AUTH_H

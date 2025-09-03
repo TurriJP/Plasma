@@ -39,17 +39,38 @@ You can contact Cyan Worlds, Inc. by email legal@cyan.com
       Mead, WA   99021
 
 *==LICENSE==*/
-/*****************************************************************************
-*
-*   $/Plasma20/Sources/Plasma/NucleusLib/pnNetProtocol/pnNetProtocol.h
-*   
-***/
 
-#ifndef PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PNNETPROTOCOL_H
-#define PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PNNETPROTOCOL_H
+#ifndef plMacDisplayHelper_hpp
+#define plMacDisplayHelper_hpp
 
+// Currently requires Metal to query attached GPU capabilities
+// Capability check will also work for GL - but will need something
+// different for older GPUs.
+#include <AppKit/AppKit.h>
+#include <QuartzCore/QuartzCore.h>
 
-#include "Private/pnNpAllIncludes.h"
+#include "plPipeline/hsG3DDeviceSelector.h"
+#include "plPipeline/pl3DPipeline.h"
 
+class plMacDisplayHelper : public plDisplayHelper
+{
+public:
+    plMacDisplayHelper();
+    
 
-#endif // PLASMA20_SOURCES_PLASMA_NUCLEUSLIB_PNNETPROTOCOL_PNNETPROTOCOL_H
+    CGDirectDisplayID CurrentDisplay() const { return fCurrentDisplay; }
+
+    plDisplayMode DesktopDisplayMode() override { return fDesktopDisplayMode; };
+    std::vector<plDisplayMode> GetSupportedDisplayModes(hsDisplayHndl display, int ColorDepth = 32) const override;
+
+private:
+    mutable CGDirectDisplayID          fCurrentDisplay;
+    mutable plDisplayMode              fDesktopDisplayMode;
+    mutable std::vector<plDisplayMode> fDisplayModes;
+
+    void SetCurrentScreen(hsDisplayHndl screen) const;
+    // we need NSScreen to query for non rectangular screen geometry
+    void SetCurrentScreen(NSScreen* screen) const;
+};
+
+#endif /* plMacDisplayHelper_hpp */

@@ -39,14 +39,10 @@ You can contact Cyan Worlds, Inc. by email legal@cyan.com
       Mead, WA   99021
 
 *==LICENSE==*/
-/*****************************************************************************
-*
-*   $/Plasma20/Sources/Plasma/NucleusLib/pnNetProtocol/Private/Protocols/pnNpCli2Auth.cpp
-*   
-***/
 
-#define USES_PROTOCOL_CLI2AUTH
-#include "../../../Pch.h"
+#include "pnNpCli2Auth.h"
+
+#include "pnNetCli/pnNetCli.h"
 
 
 namespace Cli2Auth {
@@ -150,8 +146,8 @@ static const NetMsgField kAcctActivateRequestFields[] = {
 
 static const NetMsgField kFileListRequestFields[] = {
     kNetMsgFieldTransId,                                // transId
-    NET_MSG_FIELD_STRING(kNetDefaultStringSize),       // directory
-    NET_MSG_FIELD_STRING(MAX_EXT),                      // ext
+    NET_MSG_FIELD_STRING(kNetDefaultStringSize),        // directory
+    NET_MSG_FIELD_STRING(kMaxFileExtensionLength),      // ext
 };
 
 static const NetMsgField kFileDownloadRequestFields[] = {

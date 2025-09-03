@@ -270,9 +270,9 @@ static void INetCliAuthSetPlayerRequestCallback (
         VaultDownloadNoCallbacks(
             "SetActivePlayer",
             s_player->playerInt,
-            PlayerInitCallback,
-            param,
-            nullptr,
+            [param](auto result) {
+                PlayerInitCallback(result, param);
+            },
             nullptr
         );
     }
@@ -326,9 +326,9 @@ static void INetCliAuthLoginSetPlayerRequestCallback (
         VaultDownloadNoCallbacks(
             "SetActivePlayer",
             s_player->playerInt,
-            LoginPlayerInitCallback,
-            param,
-            nullptr,
+            [param](auto result) {
+                LoginPlayerInitCallback(result, param);
+            },
             nullptr
         );
     }
@@ -947,7 +947,7 @@ void NetCommDeletePlayer (  // --> plNetCommDeletePlayerMsg
     unsigned                playerInt,
     void *                  param
 ) {
-    ASSERTMSG(!param, "'param' will not be propagated to your callback function, you may modify the code to support this");
+    hsAssert(!param, "'param' will not be propagated to your callback function, you may modify the code to support this");
     ASSERT(NetCommGetPlayer()->playerInt != playerInt);
 
     NetCliAuthPlayerDeleteRequest(
