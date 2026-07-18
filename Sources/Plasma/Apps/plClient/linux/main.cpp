@@ -81,6 +81,7 @@ You can contact Cyan Worlds, Inc. by email legal@cyan.com
 #include "plStatusLog/plStatusLog.h"
 
 #include "pfConsoleCore/pfConsoleEngine.h"
+#include "pfConsoleCore/pfServerIni.h"
 #include "pfPasswordStore/pfPasswordStore.h"
 
 extern bool gDataServerLocal;
@@ -88,6 +89,7 @@ extern bool gPythonLocal;
 extern bool gSDLLocal;
 
 static plClientLoader gClient;
+static Display* gDisplay;
 static xcb_connection_t* gXConn;
 static xcb_key_symbols_t* keysyms;
 static pcSmallRect gWindowSize;
@@ -372,7 +374,7 @@ static uint32_t ParseRendererArgument(const ST::string& requested)
     return hsG3DDeviceSelector::kDevTypeUnknown;
 }
 
-static bool XInit(xcb_connection_t* connection)
+static bool XInit(xcb_connection_t* connection, Display* display)
 {
     gWindowSize.Set(0, 0, 800, 600);
 
@@ -385,12 +387,12 @@ static bool XInit(xcb_connection_t* connection)
     xcb_screen_t* screen = iter.data;
 
     /* Check for XFixes support for hiding the cursor */
-    const xcb_query_extension_reply_t* qe_reply = xcb_get_extension_data(gXConn, &xcb_xfixes_id);
+    const xcb_query_extension_reply_t* qe_reply = xcb_get_extension_data(connection, &xcb_xfixes_id);
     if (qe_reply && qe_reply->present)
     {
         /* We *must* negotiate the XFixes version with the server */
-        xcb_xfixes_query_version_cookie_t qv_cookie = xcb_xfixes_query_version(gXConn, XCB_XFIXES_MAJOR_VERSION, XCB_XFIXES_MINOR_VERSION);
-        xcb_xfixes_query_version_reply_t* qv_reply = xcb_xfixes_query_version_reply(gXConn, qv_cookie, nullptr);
+        xcb_xfixes_query_version_cookie_t qv_cookie = xcb_xfixes_query_version(connection, XCB_XFIXES_MAJOR_VERSION, XCB_XFIXES_MINOR_VERSION);
+        xcb_xfixes_query_version_reply_t* qv_reply = xcb_xfixes_query_version_reply(connection, qv_cookie, nullptr);
 
 //#ifndef HS_DEBUGGING // Don't hide the cursor when debugging
         gHasXFixes = qv_reply->major_version >= 4;
@@ -425,17 +427,16 @@ static bool XInit(xcb_connection_t* connection)
                       XCB_CW_EVENT_MASK,             /* masks               */
                       &event_mask);                  /* masks               */
 
-    const char* title = ST::format("{}", plProduct::LongName()).c_str();
+    ST::string title = ST::format("{}", plProduct::LongName());
     xcb_change_property(connection,
                         XCB_PROP_MODE_REPLACE,
                         window,
                         XCB_ATOM_WM_NAME,
                         XCB_ATOM_STRING,
                         8,
-                        strlen(title),
-                        title);
-
-    Display* display = XOpenDisplay(nullptr);
+                        title.size(),
+                        title.c_str());
+    xcb_flush(connection);
 
     gClient.SetClientWindow((hsWindowHndl)(uintptr_t)window);
     gClient.SetClientDisplay((hsWindowHndl)display);
@@ -703,16 +704,10 @@ int main(int argc, const char** argv)
     DebugInit();
     DebugMsg("Plasma 2.0.{}.{} - {}", PLASMA2_MAJOR_VERSION, PLASMA2_MINOR_VERSION, plProduct::ProductString());
 
-    FILE *serverIniFile = plFileSystem::Open(serverIni, "rb");
-    if (serverIniFile)
-    {
-        fclose(serverIniFile);
-        pfConsoleEngine tempConsole;
-        tempConsole.ExecuteFile(serverIni);
-    }
-    else
-    {
-        hsMessageBox("No server.ini file found.  Please check your URU installation.", "Error", hsMessageBoxNormal);
+    try {
+        pfServerIni::Load(serverIni);
+    } catch (const pfServerIniParseException& exc) {
+        hsMessageBox(ST::format("Error in server.ini file. Please check your URU installation.\n{}", exc.what()), ST_LITERAL("Error"), hsMessageBoxNormal);
         return 1;
     }
 
@@ -722,9 +717,15 @@ int main(int argc, const char** argv)
     }
 
     /* Open the connection to the X server */
-    gXConn = xcb_connect(nullptr, nullptr);
+    gDisplay = XOpenDisplay(nullptr);
+    if (!gDisplay) {
+        hsMessageBox("Failed to open X display", "Error", hsMessageBoxNormal);
+        return 1;
+    }
+    gXConn = XGetXCBConnection(gDisplay);
+    XSetEventQueueOwner(gDisplay, XCBOwnsEventQueue);
 
-    if (!XInit(gXConn)) {
+    if (!XInit(gXConn, gDisplay)) {
         hsMessageBox("Failed to initialize plClient", "Error", hsMessageBoxNormal);
         return 1;
     }
@@ -740,7 +741,7 @@ int main(int argc, const char** argv)
         gClient.ShutdownEnd();
         NetCommShutdown();
 
-        xcb_disconnect(gXConn);
+        XCloseDisplay(gDisplay);
 
         return 0;
     }
@@ -780,7 +781,7 @@ int main(int argc, const char** argv)
     gClient.ShutdownEnd();
     NetCommShutdown();
 
-    xcb_disconnect(gXConn);
+    XCloseDisplay(gDisplay);
 
     return 0;
 }
