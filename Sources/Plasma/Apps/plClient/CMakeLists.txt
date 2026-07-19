@@ -259,6 +259,7 @@ if(UNIX AND NOT APPLE)
             xcb-xfixes
             xcb-keysyms
             X11
+            X11-xcb
     )
 endif()
 
